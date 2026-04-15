@@ -93,6 +93,20 @@ int object_exists(const ObjectID *id) {
 
 //
 // Returns 0 on success, -1 on error.
+/* 
+    Format the Header: Use snprintf to create a string like "blob 1024". Note that you need the \0 character to separate it from the data.
+
+Combine Header and Data: You'll need a temporary buffer large enough to hold strlen(header) + 1 + len.
+
+Tip: The +1 is for the actual null byte that must be written to the file.
+
+Hash the Whole Thing: Pass this combined buffer to compute_hash(). This gives you the ObjectID (the SHA-256 fingerprint).
+
+Deduplicate: Call object_exists(id_out). If it returns true, Git already has this exact content—just return 0 and stop.
+
+The Atomic Write Pattern
+*/
+
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
     // TODO: Implement
     (void)type; (void)data; (void)len; (void)id_out;
