@@ -144,7 +144,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 
     // 6. Write to a temporary file
     object_path(id_out, path, sizeof(path));
-    char temp_path[512];
+    char temp_path[516];
     snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
 
     int fd = open(temp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
