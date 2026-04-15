@@ -194,22 +194,20 @@ int head_update(const ObjectID *new_commit) {
 //
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
-    Index index;
-    // 1. Load the current index to see what we are committing
+  Index index;
+    // 1. Load the current index to verify there is something to commit
     if (index_load(&index) != 0) {
-        fprintf(stderr, "error: failed to load index\n");
         return -1;
     }
-
     if (index.count == 0) {
         fprintf(stderr, "nothing to commit (use 'pes add')\n");
         return -1;
     }
 
-    // 2. Create a tree from the index
-    // This handles the Phase 2 logic of writing tree objects
+    // 2. Create a tree. Based on your tree.h, this function 
+    // takes ONLY the ObjectID pointer as an argument.
     ObjectID tree_id;
-    if (tree_from_index(&index, &tree_id) != 0) {
+    if (tree_from_index(&tree_id) != 0) {
         fprintf(stderr, "error: failed to create tree\n");
         return -1;
     }
@@ -220,19 +218,18 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     commit.tree = tree_id;
     commit.timestamp = (uint64_t)time(NULL);
     
-    // Set author from the global pes_author (defined in pes.h)
+    // Copy the author name (using provided helper) and the message
     snprintf(commit.author, sizeof(commit.author), "%s", pes_author());
-    // Copy the user's message
     snprintf(commit.message, sizeof(commit.message), "%s", message);
 
-    // 4. Try to find a parent commit (read HEAD)
+    // 4. Handle Parentage (Read HEAD)
     if (head_read(&commit.parent) == 0) {
         commit.has_parent = 1;
     } else {
-        commit.has_parent = 0; // This is the first commit
+        commit.has_parent = 0; 
     }
 
-    // 5. Serialize commit to text format and write to object store
+    // 5. Serialize and Write
     void *data = NULL;
     size_t len = 0;
     if (commit_serialize(&commit, &data, &len) != 0) {
@@ -245,7 +242,7 @@ int commit_create(const char *message, ObjectID *commit_id_out) {
     }
     free(data);
 
-    // 6. Move HEAD to point to this new commit
+    // 6. Update HEAD pointer
     if (head_update(commit_id_out) != 0) {
         return -1;
     }
