@@ -153,14 +153,15 @@ static int build_tree_recursive(const IndexEntry *entries, int count, int prefix
             // Case 1: It's a file in the current directory
             TreeEntry *te = &tree.entries[tree.count++];
             te->mode = entries[i].mode;
-            strncpy(te->name, current_path, sizeof(te->name) - 1);
+            // Replace your existing strncpy for files with this:
+            snprintf(te->name, sizeof(te->name), "%s", current_path);
             memcpy(te->hash.hash, entries[i].hash.hash, HASH_SIZE);
             i++;
         } else {
             // Case 2: It's a subdirectory
             size_t dir_name_len = slash - current_path;
             char dir_name[MAX_PATH_SIZE];
-            strncpy(dir_name, current_path, dir_name_len);
+           snprintf(te->name, sizeof(te->name), "%.*s", (int)dir_name_len, current_path);
             dir_name[dir_name_len] = '\0';
 
             // Find all entries that share this same subdirectory prefix
