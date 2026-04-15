@@ -108,9 +108,59 @@ The Atomic Write Pattern
 */
 
 int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out) {
-    // TODO: Implement
-    (void)type; (void)data; (void)len; (void)id_out;
-    return -1;
+ // 1. Map ObjectType enum to string
+    const char *type_str;
+    if (type == OBJ_BLOB) type_str = "blob";
+    else if (type == OBJ_TREE) type_str = "tree";
+    else if (type == OBJ_COMMIT) type_str = "commit";
+    else return -1;
+
+    // 2. Build the full object: header ("type size\0") + data
+    char header[64];
+    int header_len = snprintf(header, sizeof(header), "%s %zu", type_str, len) + 1; // +1 for the \0
+    
+    size_t full_size = header_len + len;
+    uint8_t *full_obj = malloc(full_size);
+    if (!full_obj) return -1;
+
+    memcpy(full_obj, header, header_len);
+    memcpy(full_obj + header_len, data, len);
+
+    // 3. Compute SHA-256 hash of the FULL object
+    compute_hash(full_obj, full_size, id_out);
+
+    // 4. Check for deduplication
+    if (object_exists(id_out)) {
+        free(full_obj);
+        return 0;
+    }
+
+    // 5. Create shard directory (.pes/objects/XX/)
+    char path[512], hex[HASH_HEX_SIZE + 1];
+    hash_to_hex(id_out, hex);
+    char shard_dir[512];
+    snprintf(shard_dir, sizeof(shard_dir), "%s/%.2s", OBJECTS_DIR, hex);
+    mkdir(shard_dir, 0755); // Ignore error if exists
+
+    // 6. Write to a temporary file
+    object_path(id_out, path, sizeof(path));
+    char temp_path[512];
+    snprintf(temp_path, sizeof(temp_path), "%s.tmp", path);
+
+    int fd = open(temp_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd < 0) { free(full_obj); return -1; }
+
+    if (write(fd, full_obj, full_size) != (ssize_t)full_size) {
+        close(fd); unlink(temp_path); free(full_obj); return -1;
+    }
+
+    // 7. Persist and Rename (Atomic)
+    fsync(fd);
+    close(fd);
+    if (rename(temp_path, path) < 0) { unlink(temp_path); free(full_obj); return -1; }
+
+    free(full_obj);
+    return 0;
 }
 
 // Read an object from the store.
