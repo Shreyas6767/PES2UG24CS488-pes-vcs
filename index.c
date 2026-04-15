@@ -158,7 +158,7 @@ int index_load(Index *index) {
         hex_to_hash(hash_hex, &e->hash); // Convert text hex back to binary ObjectID
         e->mtime_sec = mtime;
         e->size = size;
-        strncpy(e->path, path, sizeof(e->path) - 1);
+       snprintf(e->path, sizeof(e->path), "%s", path);
     }
 
     fclose(f);
@@ -189,7 +189,7 @@ int index_save(const Index *index) {
         char hash_hex[65];
         hash_to_hex(&e->hash, hash_hex); // Convert binary hash to text hex for storage
         
-        fprintf(f, "%o %s %u %u %s\n", e->mode, hash_hex, e->mtime_sec, e->size, e->path);
+        fprintf(f, "%o %s %lu %u %s\n", e->mode, hash_hex, e->mtime_sec, e->size, e->path);
     }
 
     // 3. Ensure data is physically on disk before renaming
