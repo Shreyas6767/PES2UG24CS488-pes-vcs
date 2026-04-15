@@ -19,6 +19,9 @@
 #define REFS_DIR ".pes/refs/heads"
 #define INDEX_FILE ".pes/index"
 #define HEAD_FILE ".pes/HEAD"
+#ifndef MAX_PATH_SIZE
+#define MAX_PATH_SIZE 1024
+#endif
 
 // ─── Object Types ────────────────────────────────────────────────────────────
 
