@@ -135,9 +135,70 @@ Step-by-Step Logic (The "One-Liner")
 You must recursively group index entries by their top-level directory names, 
 create sub-trees for those groups, and then serialize and write each tree level to the object store from the bottom up.
  */
+
+// Recursive helper to build a tree from a subset of index entries
+static int build_tree_recursive(const IndexEntry *entries, int count, int prefix_len, ObjectID *id_out) {
+    Tree tree;
+    tree.count = 0;
+
+    for (int i = 0; i < count; ) {
+        // Skip path segments already processed (prefix_len)
+        const char *current_path = entries[i].path + prefix_len;
+        const char *slash = strchr(current_path, '/');
+
+        if (slash == NULL) {
+            // Case 1: It's a file in the current directory
+            TreeEntry *te = &tree.entries[tree.count++];
+            te->mode = entries[i].mode;
+            strncpy(te->name, current_path, sizeof(te->name) - 1);
+            memcpy(te->hash.hash, entries[i].hash.hash, HASH_SIZE);
+            i++;
+        } else {
+            // Case 2: It's a subdirectory
+            size_t dir_name_len = slash - current_path;
+            char dir_name[MAX_PATH_SIZE];
+            strncpy(dir_name, current_path, dir_name_len);
+            dir_name[dir_name_len] = '\0';
+
+            // Find all entries that share this same subdirectory prefix
+            int group_start = i;
+            int group_count = 0;
+            while (i < count && strncmp(entries[i].path + prefix_len, dir_name, dir_name_len) == 0 &&
+                   (entries[i].path + prefix_len)[dir_name_len] == '/') {
+                group_count++;
+                i++;
+            }
+
+            // Recurse to build the child tree
+            ObjectID sub_tree_id;
+            if (build_tree_recursive(&entries[group_start], group_count, prefix_len + dir_name_len + 1, &sub_tree_id) != 0) {
+                return -1;
+            }
+
+            // Add the directory entry to the current tree
+            TreeEntry *te = &tree.entries[tree.count++];
+            te->mode = MODE_DIR; // 040000
+            strncpy(te->name, dir_name, sizeof(te->name) - 1);
+            memcpy(te->hash.hash, sub_tree_id.hash, HASH_SIZE);
+        }
+    }
+
+    // Serialize and write the current tree level to the object store
+    void *tree_data;
+    size_t tree_len;
+    if (tree_serialize(&tree, &tree_data, &tree_len) != 0) return -1;
+    
+    int ret = object_write(OBJ_TREE, tree_data, tree_len, id_out);
+    free(tree_data);
+    return ret;
+}
+
 int tree_from_index(ObjectID *id_out) {
-    // TODO: Implement recursive tree building
-    // (See Lab Appendix for logical steps)
-    (void)id_out;
-    return -1;
+ Index idx;
+    if (index_load(&idx) != 0) return -1; //
+
+    if (idx.count == 0) return -1; // Cannot build a tree from an empty index
+
+    // Start recursion from the root (prefix_len = 0)
+    return build_tree_recursive(idx.entries, idx.count, 0, id_out);
 }
