@@ -186,7 +186,50 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+   // 1. Build file path
+    char path[512];
+    object_path(id, path, sizeof(path));
+
+    // 2. Open and read file
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    fseek(f, 0, SEEK_END);
+    size_t file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    uint8_t *buffer = malloc(file_size);
+    if (fread(buffer, 1, file_size, f) != file_size) {
+        fclose(f); free(buffer); return -1;
+    }
+    fclose(f);
+
+    // 3. Verify integrity
+    ObjectID actual_id;
+    compute_hash(buffer, file_size, &actual_id);
+    if (memcmp(id->hash, actual_id.hash, HASH_SIZE) != 0) {
+        free(buffer); return -1; // Data corruption detected!
+    }
+
+    // 4. Parse header (Find the '\0' separator)
+    char *header = (char *)buffer;
+    char *data_ptr = memchr(buffer, '\0', file_size);
+    if (!data_ptr) { free(buffer); return -1; }
+    data_ptr++; // Move past the \0 to the actual data
+
+    char type_str[16];
+    size_t size;
+    sscanf(header, "%s %zu", type_str, &size);
+
+    // 5. Assign outputs
+    if (strcmp(type_str, "blob") == 0) *type_out = OBJ_BLOB;
+    else if (strcmp(type_str, "tree") == 0) *type_out = OBJ_TREE;
+    else if (strcmp(type_str, "commit") == 0) *type_out = OBJ_COMMIT;
+
+    *len_out = size;
+    *data_out = malloc(size);
+    memcpy(*data_out, data_ptr, size);
+
+    free(buffer);
+    return 0;
 }
