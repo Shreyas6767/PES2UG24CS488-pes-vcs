@@ -161,7 +161,7 @@ static int build_tree_recursive(const IndexEntry *entries, int count, int prefix
             // Case 2: It's a subdirectory
             size_t dir_name_len = slash - current_path;
             char dir_name[MAX_PATH_SIZE];
-           snprintf(te->name, sizeof(te->name), "%.*s", (int)dir_name_len, current_path);
+          strncpy(dir_name, current_path, dir_name_len);
             dir_name[dir_name_len] = '\0';
 
             // Find all entries that share this same subdirectory prefix
@@ -182,7 +182,7 @@ static int build_tree_recursive(const IndexEntry *entries, int count, int prefix
             // Add the directory entry to the current tree
             TreeEntry *te = &tree.entries[tree.count++];
             te->mode = MODE_DIR; // 040000
-            strncpy(te->name, dir_name, sizeof(te->name) - 1);
+           snprintf(te->name, sizeof(te->name), "%.*s", (int)dir_name_len, current_path);
             memcpy(te->hash.hash, sub_tree_id.hash, HASH_SIZE);
         }
     }
