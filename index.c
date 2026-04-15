@@ -141,24 +141,24 @@ static int compare_index_entries(const void *a, const void *b) {
 }
 
 int index_load(Index *index) {
-  index->count = 0;
+index->count = 0; // CRITICAL: Initialize to zero so an empty index is valid
     FILE *f = fopen(".pes/index", "r");
-    if (!f) return 0; // It's okay if index doesn't exist yet, return empty
+    if (!f) return 0; 
 
     char hash_hex[65];
     char path[MAX_PATH_SIZE];
     uint32_t mode, mtime, size;
 
-    // Format: <mode> <hash> <mtime> <size> <path>
+    // Use a format that matches exactly how you write it in index_save
     while (fscanf(f, "%o %64s %u %u %[^\n]", &mode, hash_hex, &mtime, &size, path) == 5) {
         if (index->count >= MAX_INDEX_ENTRIES) break;
 
         IndexEntry *e = &index->entries[index->count++];
         e->mode = mode;
-        hex_to_hash(hash_hex, &e->hash); // Convert text hex back to binary ObjectID
-        e->mtime_sec = mtime;
+        hex_to_hash(hash_hex, &e->hash);
+        e->mtime_sec = (uint64_t)mtime; // Ensure type consistency
         e->size = size;
-       snprintf(e->path, sizeof(e->path), "%s", path);
+        snprintf(e->path, sizeof(e->path), "%s", path);
     }
 
     fclose(f);
@@ -176,28 +176,25 @@ int index_load(Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_save(const Index *index) {
-   // 1. Sort entries by path (standard Git behavior)
-    Index sorted_idx = *index;
+ Index sorted_idx = *index;
     qsort(sorted_idx.entries, sorted_idx.count, sizeof(IndexEntry), compare_index_entries);
 
-    // 2. Open a temporary file for atomic write
     FILE *f = fopen(".pes/index.tmp", "w");
     if (!f) return -1;
 
     for (int i = 0; i < sorted_idx.count; i++) {
         const IndexEntry *e = &sorted_idx.entries[i];
         char hash_hex[65];
-        hash_to_hex(&e->hash, hash_hex); // Convert binary hash to text hex for storage
+        hash_to_hex(&e->hash, hash_hex);
         
-        fprintf(f, "%o %s %lu %u %s\n", e->mode, hash_hex, e->mtime_sec, e->size, e->path);
+        // Use %lu for mtime_sec if it's uint64_t to match your system architecture
+        fprintf(f, "%o %s %lu %u %s\n", e->mode, hash_hex, (unsigned long)e->mtime_sec, e->size, e->path);
     }
 
-    // 3. Ensure data is physically on disk before renaming
     fflush(f);
     fsync(fileno(f));
     fclose(f);
 
-    // 4. Atomic swap: the old index is only replaced if the new one wrote successfully
     if (rename(".pes/index.tmp", ".pes/index") != 0) {
         unlink(".pes/index.tmp");
         return -1;
@@ -215,38 +212,44 @@ int index_save(const Index *index) {
 //
 // Returns 0 on success, -1 on error.
 int index_add(Index *index, const char *path) {
- struct stat st;
+struct stat st;
     if (stat(path, &st) != 0) return -1;
-    if (!S_ISREG(st.st_mode)) return -1; // Only stage regular files
+    if (!S_ISREG(st.st_mode)) return -1; 
 
-    // 1. Read file and write to Object Store as a BLOB
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     
-    void *data = malloc(st.st_size);
-    fread(data, 1, st.st_size, f);
+    // Safety check for empty files to avoid malloc(0) issues
+    void *data = NULL;
+    if (st.st_size > 0) {
+        data = malloc(st.st_size);
+        if (!data) { fclose(f); return -1; }
+        if (fread(data, 1, st.st_size, f) != (size_t)st.st_size) {
+            free(data); fclose(f); return -1;
+        }
+    }
     fclose(f);
 
     ObjectID id;
     if (object_write(OBJ_BLOB, data, st.st_size, &id) != 0) {
-        free(data);
+        if (data) free(data);
         return -1;
     }
-    free(data);
+    if (data) free(data);
 
-    // 2. Update or create the index entry
     IndexEntry *e = index_find(index, path);
-    if (e==NULL) {
+    if (e == NULL) {
         if (index->count >= MAX_INDEX_ENTRIES) return -1;
         e = &index->entries[index->count++];
+        // Zero out the entry memory to prevent garbage data
+        memset(e, 0, sizeof(IndexEntry));
         strncpy(e->path, path, sizeof(e->path) - 1);
     }
 
     e->mode = st.st_mode;
     e->hash = id;
-    e->mtime_sec = (uint32_t)st.st_mtime;
+    e->mtime_sec = (uint64_t)st.st_mtime;
     e->size = (uint32_t)st.st_size;
 
-    // 3. Persist the changes
     return index_save(index);
 }
