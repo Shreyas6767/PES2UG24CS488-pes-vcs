@@ -194,8 +194,62 @@ int head_update(const ObjectID *new_commit) {
 //
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
-    // TODO: Implement commit creation
-    // (See Lab Appendix for logical steps)
-    (void)message; (void)commit_id_out;
-    return -1;
+  int commit_create(const char *message, ObjectID *commit_id_out) {
+    Index index;
+    // 1. Load the current index to see what we are committing
+    if (index_load(&index) != 0) {
+        fprintf(stderr, "error: failed to load index\n");
+        return -1;
+    }
+
+    if (index.count == 0) {
+        fprintf(stderr, "nothing to commit (use 'pes add')\n");
+        return -1;
+    }
+
+    // 2. Create a tree from the index
+    // This handles the Phase 2 logic of writing tree objects
+    ObjectID tree_id;
+    if (tree_from_index(&index, &tree_id) != 0) {
+        fprintf(stderr, "error: failed to create tree\n");
+        return -1;
+    }
+
+    // 3. Prepare the Commit structure
+    Commit commit;
+    memset(&commit, 0, sizeof(Commit));
+    commit.tree = tree_id;
+    commit.timestamp = (uint64_t)time(NULL);
+    
+    // Set author from the global pes_author (defined in pes.h)
+    snprintf(commit.author, sizeof(commit.author), "%s", pes_author());
+    // Copy the user's message
+    snprintf(commit.message, sizeof(commit.message), "%s", message);
+
+    // 4. Try to find a parent commit (read HEAD)
+    if (head_read(&commit.parent) == 0) {
+        commit.has_parent = 1;
+    } else {
+        commit.has_parent = 0; // This is the first commit
+    }
+
+    // 5. Serialize commit to text format and write to object store
+    void *data = NULL;
+    size_t len = 0;
+    if (commit_serialize(&commit, &data, &len) != 0) {
+        return -1;
+    }
+
+    if (object_write(OBJ_COMMIT, data, len, commit_id_out) != 0) {
+        free(data);
+        return -1;
+    }
+    free(data);
+
+    // 6. Move HEAD to point to this new commit
+    if (head_update(commit_id_out) != 0) {
+        return -1;
+    }
+
+    return 0;
 }
