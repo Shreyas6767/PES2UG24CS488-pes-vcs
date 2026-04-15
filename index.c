@@ -236,7 +236,7 @@ int index_add(Index *index, const char *path) {
 
     // 2. Update or create the index entry
     IndexEntry *e = index_find(index, path);
-    if (!e) {
+    if (e==NULL) {
         if (index->count >= MAX_INDEX_ENTRIES) return -1;
         e = &index->entries[index->count++];
         strncpy(e->path, path, sizeof(e->path) - 1);
