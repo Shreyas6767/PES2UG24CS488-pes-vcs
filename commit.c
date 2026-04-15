@@ -194,7 +194,6 @@ int head_update(const ObjectID *new_commit) {
 //
 // Returns 0 on success, -1 on error.
 int commit_create(const char *message, ObjectID *commit_id_out) {
-  int commit_create(const char *message, ObjectID *commit_id_out) {
     Index index;
     // 1. Load the current index to see what we are committing
     if (index_load(&index) != 0) {
